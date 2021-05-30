@@ -20,15 +20,20 @@ namespace PhotoBackupCleanup
         private static Collection<FileData> fileData;
         private static int countHashed;
 
-        public static Dictionary<string, FileData> GetFiles(DirectoryInfo sourceDirectory, out Collection<FileData> duplicates)
+        public static Dictionary<string, FileData> GetFiles(List<DirectoryInfo> sourceDirectories, out Collection<FileData> duplicates)
         {
-            fileHashPath = Path.Combine(sourceDirectory.FullName, "FileHashes.xml");
+            fileData = new Collection<FileData>();
+            foreach (DirectoryInfo sourceDirectory in sourceDirectories)
+            {
+                Console.WriteLine("Searching for image files in {0}...", sourceDirectory.FullName);
+                fileHashPath = Path.Combine(sourceDirectory.FullName, "FileHashes.xml");
+                ReadFileHashes();
+                Collection<FileInfo> fileList = new Collection<FileInfo>();
+                FindFiles(sourceDirectory, fileList);
+                CalculateImageHashes(fileList);
+                WriteFileHashes();
+            }
             duplicates = new Collection<FileData>();
-            Collection<FileInfo> fileList = new Collection<FileInfo>();
-            ReadFileHashes();
-            FindFiles(sourceDirectory, fileList);
-            CalculateImageHashes(fileList);
-            WriteFileHashes();
             return FindDuplicates(duplicates);
         }
 
@@ -82,15 +87,24 @@ namespace PhotoBackupCleanup
 
         private static void FindFiles(DirectoryInfo directory, Collection<FileInfo> files)// Dictionary<string, FileData> files, Collection<FileData> duplicates)
         {
-            foreach (FileInfo file in directory.EnumerateFiles())
+            try
             {
-                if (file.Extension.Equals(".db"))
-                    continue;
-                files.Add(file);
+                foreach (FileInfo file in directory.EnumerateFiles())
+                {
+                    if (file.Extension.Equals(".db"))
+                        continue;
+                    files.Add(file);
+                }
+                foreach (DirectoryInfo dir in directory.EnumerateDirectories())
+                {
+                    if (dir.Name == ".tmp.drivedownload")
+                        continue;
+                    FindFiles(dir, files);
+                }
             }
-            foreach (DirectoryInfo dir in directory.EnumerateDirectories())
+            catch (UnauthorizedAccessException uae)
             {
-                FindFiles(dir, files);
+                System.Console.WriteLine(uae.Message);
             }
         }
 
@@ -170,7 +184,6 @@ namespace PhotoBackupCleanup
             watch.Start();
             countHashed = 0;
             toProcess = files;
-            fileData = new Collection<FileData>();
 
             threadpool = new Thread[4];
             for (int i = 0; i < threadpool.Length; i++)

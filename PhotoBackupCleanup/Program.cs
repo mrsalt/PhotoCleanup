@@ -1,16 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Xml;
-using System.Xml.Serialization;
 
 namespace PhotoBackupCleanup
 {
@@ -18,16 +10,30 @@ namespace PhotoBackupCleanup
     {
         private static void PrintHelp()
         {
-            throw new NotImplementedException();
+            Console.WriteLine("PhotoCleanup Utility");
+            Console.WriteLine("  Reports on duplicate image files, deletes duplicates, copies missing files.");
+            Console.WriteLine("  Synchronizes two sets of files.");
+            Console.WriteLine();
+            Console.WriteLine("  Arguments:");
+            Console.WriteLine("  -s   Specify a source directory.  Searches this directory and all subfolders");
+            Console.WriteLine("       for image files.");
+            Console.WriteLine("  -d   Specify the destination directory.  If only source directories are");
+            Console.WriteLine("       specified, program will only search for (and optinally delete) duplicate");
+            Console.WriteLine("       files.");
         }
+
+        static SortedSet<String> filesToIgnore = new SortedSet<string>();
 
         static void Main(string[] args)
         {
-            DirectoryInfo sourceDirectory = null;
+            List<DirectoryInfo> sourceDirectories = new List<DirectoryInfo>();
             DirectoryInfo destDirectory = null;
             bool deleteFiles = false;
             bool copyMissingFiles = false;
             bool reportMissingFiles = false;
+
+            filesToIgnore.Add("desktop.ini");
+            filesToIgnore.Add("FileHashes.xml");
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -35,8 +41,10 @@ namespace PhotoBackupCleanup
                 {
                     case "-s":
                     {
-                        // specify source directory only to find duplicates.
-                        sourceDirectory = new DirectoryInfo(args[++i]);
+                        // specify source directories only to find duplicates.
+                        // program will search each source directory (and it's subfolders) for
+                        // all image files.
+                        sourceDirectories.Add(new DirectoryInfo(args[++i]));
                         break;
                     }
                     case "-d":
@@ -73,7 +81,7 @@ namespace PhotoBackupCleanup
                 }
             }
 
-            if (args.Length == 0 || sourceDirectory == null)
+            if (args.Length == 0 || sourceDirectories.Count == 0)
             {
                 PrintHelp();
                 Environment.Exit(-1);
@@ -85,13 +93,13 @@ namespace PhotoBackupCleanup
             if (Utilities.htmlOutput)
                 Console.WriteLine("<pre>");
 
-            Dictionary<string, FileData> sourceFiles = FileIndexer.GetFiles(sourceDirectory, out sourceDuplicates);
+            Dictionary<string, FileData> sourceFiles = FileIndexer.GetFiles(sourceDirectories, out sourceDuplicates);
             if (sourceFiles == null)
                 return;
 
             if (destDirectory == null)
             {
-                Console.WriteLine("{0} duplicates found in {1}: ", sourceDuplicates.Count, sourceDirectory.FullName);
+                Console.WriteLine("{0} duplicates found in {1}: ", sourceDuplicates.Count, String.Join(", ", sourceDirectories));
                 foreach (FileData dup in sourceDuplicates)
                 {
                     //if (!string.IsNullOrEmpty(dup.md5Hash) && !string.IsNullOrEmpty(sourceFiles[dup.key].md5Hash) &&
@@ -118,17 +126,28 @@ namespace PhotoBackupCleanup
             }
             else if (sourceFiles.Count > 0)
             {
-                Collection<FileData> destDuplicates;
-                Dictionary<string, FileData> destFiles = FileIndexer.GetFiles(destDirectory, out destDuplicates);
-
-                if (reportMissingFiles)
+                if (sourceDirectories.Count == 1)
                 {
-                    ReportOnMissingSourceFiles(sourceDirectory, destDirectory, sourceFiles, destFiles, destDuplicates);
+                    Collection<FileData> destDuplicates;
+                    List<DirectoryInfo> destDirectoriesList = new List<DirectoryInfo>();
+                    destDirectoriesList.Add(destDirectory);
+                    Dictionary<string, FileData> destFiles = FileIndexer.GetFiles(destDirectoriesList, out destDuplicates);
+
+                    if (reportMissingFiles)
+                    {
+                        ReportOnMissingSourceFiles(sourceDirectories[0], destDirectory, sourceFiles, destFiles, destDuplicates);
+                    }
+                    else
+                    {
+                        Console.WriteLine();
+                        CopyMissingFiles(sourceDirectories[0], destDirectory, sourceFiles, copyMissingFiles);
+                        Console.WriteLine();
+                        DeleteDestFiles(sourceDirectories[0].FullName, destDirectory.FullName, destDirectory, deleteFiles);
+                    }
                 }
                 else
                 {
-                    CopyMissingFiles(sourceDirectory, destDirectory, sourceFiles, copyMissingFiles);
-                    DeleteDestFiles(sourceDirectory.FullName, destDirectory.FullName, destDirectory, deleteFiles);
+                    Console.WriteLine("Missing files report, copying missing files, and deleting destination files can only be done when a single source directory is provided.");
                 }
             }
 
@@ -145,8 +164,10 @@ namespace PhotoBackupCleanup
                 FileInfo destInfo = new FileInfo(destPath);
                 if (!destInfo.Exists || destInfo.Length != srcInfo.Length)
                 {
-                    if (srcInfo.Name == "desktop.ini")
+                    if (filesToIgnore.Contains(srcInfo.Name))
+                    {
                         continue;
+                    }
                     if (!Utilities.IsMediaFile(srcInfo))
                     {
                         Console.WriteLine("Warning - nonstandard file extension:");

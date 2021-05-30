@@ -63,7 +63,7 @@ namespace PhotoBackupCleanup
         static string[] standardImageExtensions = { ".jpg", ".tif", ".png", ".bmp" };
 
         static string[] movieOrOtherImageRelatedExtensions = { ".avi", ".mpg", ".thm", //canon jpeg thumbnail - plus perhaps some proprietary stuff };
-                                                                 ".psd", ".3gp", ".mp4" };
+                                                                 ".psd", ".3gp", ".mp4", ".nef", ".xmp", ".dng" };
         public static bool IsMediaFile(FileInfo file)
         {
             string lowerExt = file.Extension.ToLower();
