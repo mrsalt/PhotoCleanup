@@ -1,12 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
+using System.Net;
 
 namespace PhotoBackupCleanup
 {
@@ -100,8 +96,22 @@ namespace PhotoBackupCleanup
         public static string FormatFileName(string p)
         {
             if (htmlOutput)
-                return "<a href=\"file:///" + p + "\">" + p + "</a>";
+                return "<a href=\"" + FilePathToFileUrl(p) + "\">" + p + "</a>";
             return p;
+        }
+
+        // Kudos to Tommaso Ercole, https://stackoverflow.com/questions/1546419/convert-file-path-to-a-file-uri/74852300#74852300
+        public static string FilePathToFileUrl(string path)
+        {
+            return new UriBuilder("file", string.Empty)
+            {
+                Path = path
+                        .Replace("%", $"%{(int)'%':X2}")
+                        .Replace("[", $"%{(int)'[':X2}")
+                        .Replace("]", $"%{(int)']':X2}"),
+            }
+                .Uri
+                .AbsoluteUri;
         }
     }
 }

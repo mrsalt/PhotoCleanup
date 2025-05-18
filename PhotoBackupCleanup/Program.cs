@@ -17,6 +17,7 @@ namespace PhotoBackupCleanup
             Console.WriteLine("  Required Arguments:");
             Console.WriteLine("  -s              Specify a source directory.  Searches this directory and all subfolders");
             Console.WriteLine("                  for image files.");
+            Console.WriteLine();
             Console.WriteLine("  Optional Arguments:");
             Console.WriteLine("  -d              Specify the destination directory.  If only source directories are");
             Console.WriteLine("                  specified, program will only search for (and optionally delete)");
@@ -108,7 +109,7 @@ namespace PhotoBackupCleanup
 
             if (destDirectory == null)
             {
-                reportWriter.WriteLine("{0} duplicates found in {1}: ", sourceDuplicates.Count, String.Join(", ", sourceDirectories));
+                reportWriter.WriteLine("{0:N0} duplicates found in {1}: ({2} files on left)", sourceDuplicates.Count, String.Join(", ", sourceDirectories), deleteFiles ? "deleting" : "will delete");
                 foreach (FileData dup in sourceDuplicates)
                 {
                     //if (!string.IsNullOrEmpty(dup.md5Hash) && !string.IsNullOrEmpty(sourceFiles[dup.key].md5Hash) &&

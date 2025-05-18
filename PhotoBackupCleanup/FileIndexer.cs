@@ -26,6 +26,7 @@ namespace PhotoBackupCleanup
                 progressWriter.WriteLine("Searching for image files in {0}...", sourceDirectory.FullName);
                 fileHashPath = Path.Combine(sourceDirectory.FullName, "FileHashes.xml");
                 ReadFileHashes();
+                progressWriter.WriteLine("Found {0:N0} files in FileHashes.xml", fileHashes.Count);
                 Collection<FileInfo> fileList = new Collection<FileInfo>();
                 FindFiles(progressWriter, sourceDirectory, fileList, 0);
                 CalculateImageHashes(progressWriter, fileList);
@@ -90,15 +91,17 @@ namespace PhotoBackupCleanup
 
         private static void FindFiles(TextWriter progressWriter, DirectoryInfo directory, Collection<FileInfo> files, int depth)// Dictionary<string, FileData> files, Collection<FileData> duplicates)
         {
-            progressWriter.WriteLine("{0}{1}", padding((depth + 1) * 2), directory);
             try
             {
+                int found = 0;
                 foreach (FileInfo file in directory.EnumerateFiles())
                 {
                     if (file.Extension.Equals(".db"))
                         continue;
                     files.Add(file);
+                    found++;
                 }
+                progressWriter.WriteLine("{0}{1} ({2:N0} files)", padding((depth + 1) * 2), directory, found);
                 foreach (DirectoryInfo dir in directory.EnumerateDirectories())
                 {
                     if (dir.Name == ".tmp.drivedownload")
@@ -108,7 +111,7 @@ namespace PhotoBackupCleanup
             }
             catch (UnauthorizedAccessException uae)
             {
-                System.Console.WriteLine(uae.Message);
+                progressWriter.WriteLine(uae.Message);
             }
         }
 
@@ -206,12 +209,13 @@ namespace PhotoBackupCleanup
             while (threadsDone < threadpool.Length)
             {
                 Thread.Sleep(1000);
-                progressWriter.Write("{0} files hashed.  {1:p1} complete.   \r", countHashed, (double)countHashed / (double)totalToHash);
+                progressWriter.Write("{0:N0} files decoded and hashed.  {1:p1} complete.   \r", countHashed, (double)countHashed / (double)totalToHash);
             }
+            progressWriter.WriteLine();
 
             watch.Stop();
             currentDomain.UnhandledException -= new UnhandledExceptionEventHandler(OnUnhandledException);
-            progressWriter.WriteLine("{0} files hashed in {1}", countHashed, watch.Elapsed);
+            progressWriter.WriteLine("{0:N0} files hashed in {1}", countHashed, watch.Elapsed);
         }
 
         private static Dictionary<string, FileData> FindDuplicates(TextWriter reportWriter, Collection<FileData> duplicates)
