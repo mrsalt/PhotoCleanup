@@ -38,6 +38,8 @@ namespace PhotoBackupCleanup
             bool deleteFiles = false;
             bool copyMissingFiles = false;
             bool reportMissingFiles = false;
+            TextWriter reportWriter = Console.Out;
+            TextWriter progressWriter = Console.Error;
 
             filesToIgnore.Add("desktop.ini");
             filesToIgnore.Add("FileHashes.xml");
@@ -98,15 +100,15 @@ namespace PhotoBackupCleanup
             Collection<FileData> sourceDuplicates;
 
             if (Utilities.htmlOutput)
-                Console.WriteLine("<pre>");
+                reportWriter.WriteLine("<pre>");
 
-            Dictionary<string, FileData> sourceFiles = FileIndexer.GetFiles(sourceDirectories, out sourceDuplicates);
+            Dictionary<string, FileData> sourceFiles = FileIndexer.GetFiles(reportWriter, progressWriter, sourceDirectories, out sourceDuplicates);
             if (sourceFiles == null)
                 return;
 
             if (destDirectory == null)
             {
-                Console.WriteLine("{0} duplicates found in {1}: ", sourceDuplicates.Count, String.Join(", ", sourceDirectories));
+                reportWriter.WriteLine("{0} duplicates found in {1}: ", sourceDuplicates.Count, String.Join(", ", sourceDirectories));
                 foreach (FileData dup in sourceDuplicates)
                 {
                     //if (!string.IsNullOrEmpty(dup.md5Hash) && !string.IsNullOrEmpty(sourceFiles[dup.key].md5Hash) &&
@@ -117,17 +119,17 @@ namespace PhotoBackupCleanup
                     {
                         if (!Utilities.IsMediaFile(dup.fileInfo))
                         {
-                            Console.WriteLine("Not deleting {0} (duplicate of {1}): not an image file", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName));
+                            reportWriter.WriteLine("Not deleting {0} (duplicate of {1}): not an image file", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName));
                         }
                         else
                         {
-                            Console.WriteLine("Deleting {0} (duplicate of {1})", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName));
+                            reportWriter.WriteLine("Deleting {0} (duplicate of {1})", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName));
                             File.Delete(dup.fileInfo.FullName);
                         }
                     }
                     else
                     {
-                        Console.WriteLine("{0} (duplicate of {1}){2}", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName), Utilities.IsMediaFile(dup.fileInfo) ? "" : " (not an image file)");
+                        reportWriter.WriteLine("{0} (duplicate of {1}){2}", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName), Utilities.IsMediaFile(dup.fileInfo) ? "" : " (not an image file)");
                     }
                 }
             }
@@ -138,31 +140,31 @@ namespace PhotoBackupCleanup
                     Collection<FileData> destDuplicates;
                     List<DirectoryInfo> destDirectoriesList = new List<DirectoryInfo>();
                     destDirectoriesList.Add(destDirectory);
-                    Dictionary<string, FileData> destFiles = FileIndexer.GetFiles(destDirectoriesList, out destDuplicates);
+                    Dictionary<string, FileData> destFiles = FileIndexer.GetFiles(reportWriter, progressWriter, destDirectoriesList, out destDuplicates);
 
                     if (reportMissingFiles)
                     {
-                        ReportOnMissingSourceFiles(sourceDirectories[0], destDirectory, sourceFiles, destFiles, destDuplicates);
+                        ReportOnMissingSourceFiles(reportWriter, sourceDirectories[0], destDirectory, sourceFiles, destFiles, destDuplicates);
                     }
                     else
                     {
-                        Console.WriteLine();
-                        CopyMissingFiles(sourceDirectories[0], destDirectory, sourceFiles, copyMissingFiles);
-                        Console.WriteLine();
-                        DeleteDestFiles(sourceDirectories[0].FullName, destDirectory.FullName, destDirectory, deleteFiles);
+                        reportWriter.WriteLine();
+                        CopyMissingFiles(reportWriter, sourceDirectories[0], destDirectory, sourceFiles, copyMissingFiles);
+                        reportWriter.WriteLine();
+                        DeleteDestFiles(reportWriter, sourceDirectories[0].FullName, destDirectory.FullName, destDirectory, deleteFiles);
                     }
                 }
                 else
                 {
-                    Console.WriteLine("Missing files report, copying missing files, and deleting destination files can only be done when a single source directory is provided.");
+                    progressWriter.WriteLine("Missing files report, copying missing files, and deleting destination files can only be done when a single source directory is provided.");
                 }
             }
 
             if (Utilities.htmlOutput)
-                Console.WriteLine("</pre>");
+                reportWriter.WriteLine("</pre>");
         }
 
-        private static void CopyMissingFiles(DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, bool actuallyCopy)
+        private static void CopyMissingFiles(TextWriter reportWriter, DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, bool actuallyCopy)
         {
             foreach (KeyValuePair<string, FileData> pair in sourceFiles)
             {
@@ -177,11 +179,11 @@ namespace PhotoBackupCleanup
                     }
                     if (!Utilities.IsMediaFile(srcInfo))
                     {
-                        Console.WriteLine("Warning - nonstandard file extension:");
+                        reportWriter.WriteLine("Warning - nonstandard file extension:");
                     }
                     if (actuallyCopy)
                     {
-                        Console.WriteLine("Copying {0} to {1}", srcInfo.FullName, destPath);
+                        reportWriter.WriteLine("Copying {0} to {1}", srcInfo.FullName, destPath);
                         DirectoryInfo destDir = new DirectoryInfo(new FileInfo(destPath).DirectoryName);
                         if (!destDir.Exists)
                         {
@@ -191,15 +193,15 @@ namespace PhotoBackupCleanup
                     }
                     else
                     {
-                        Console.WriteLine("Found file to copy: {0} to {1}", srcInfo.FullName, destPath);
+                        reportWriter.WriteLine("Found file to copy: {0} to {1}", srcInfo.FullName, destPath);
                     }
                 }
             }
         }
 
-        private static void ReportOnMissingSourceFiles(DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, Dictionary<string, FileData> destFiles, Collection<FileData> destDuplicates)
+        private static void ReportOnMissingSourceFiles(TextWriter reportWriter, DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, Dictionary<string, FileData> destFiles, Collection<FileData> destDuplicates)
         {
-            Console.WriteLine("{0} contains {1} duplicates.", destDirectory.FullName, destDuplicates.Count);
+            reportWriter.WriteLine("{0} contains {1} duplicates.", destDirectory.FullName, destDuplicates.Count);
 
             Dictionary<long, Collection<FileData>> sourceFilesBySize;
             Dictionary<string, Collection<FileData>> sourceFilesByName;
@@ -226,19 +228,19 @@ namespace PhotoBackupCleanup
                     }
                     missing.Add(pair.Value);
                     if (matchType == MatchType.Name)
-                        Console.WriteLine("{0} not found under {1} ({2} file size diff: {3:p})", Utilities.FormatFileName(pair.Value.fileInfo.FullName), sourceDirectory.FullName, Utilities.FormatFileName(match.fileInfo.FullName), fileSizeDiffPercent);
+                        reportWriter.WriteLine("{0} not found under {1} ({2} file size diff: {3:p})", Utilities.FormatFileName(pair.Value.fileInfo.FullName), sourceDirectory.FullName, Utilities.FormatFileName(match.fileInfo.FullName), fileSizeDiffPercent);
                     else
-                        Console.WriteLine("{0} not found under {1}", Utilities.FormatFileName(pair.Value.fileInfo.FullName), sourceDirectory.FullName);
+                        reportWriter.WriteLine("{0} not found under {1}", Utilities.FormatFileName(pair.Value.fileInfo.FullName), sourceDirectory.FullName);
                     sourceMissing++;
                 }
             }
-            Console.WriteLine("{0} files found under {1} not found under {2}.", sourceMissing, destDirectory.FullName, sourceDirectory.FullName);
-            Console.WriteLine();
+            reportWriter.WriteLine("{0} files found under {1} not found under {2}.", sourceMissing, destDirectory.FullName, sourceDirectory.FullName);
+            reportWriter.WriteLine();
 
-            Console.WriteLine("{0} files match a file of a different name (or same name but different size):", matches.Count);
+            reportWriter.WriteLine("{0} files match a file of a different name (or same name but different size):", matches.Count);
             foreach (string match in matches)
             {
-                Console.WriteLine(match);
+                reportWriter.WriteLine(match);
             }
         }
 
@@ -333,7 +335,7 @@ namespace PhotoBackupCleanup
             }
         }
 
-        private static void DeleteDestFiles(string srcPath, string destPath, DirectoryInfo directory, bool actuallyDelete)
+        private static void DeleteDestFiles(TextWriter reportWriter, string srcPath, string destPath, DirectoryInfo directory, bool actuallyDelete)
         {
             Collection<FileInfo> toDelete = new Collection<FileInfo>();
             foreach (FileInfo file in directory.EnumerateFiles())
@@ -349,18 +351,18 @@ namespace PhotoBackupCleanup
             if (toDelete.Count > 5)
             {
                 if (actuallyDelete)
-                    Console.WriteLine("Deleting {0} files in {1}", toDelete.Count, directory.FullName);
+                    reportWriter.WriteLine("Deleting {0} files in {1}", toDelete.Count, directory.FullName);
                 else
-                    Console.WriteLine("Found {0} files in {1} to delete (not found in {2}).", toDelete.Count, directory.FullName, srcPath);
+                    reportWriter.WriteLine("Found {0} files in {1} to delete (not found in {2}).", toDelete.Count, directory.FullName, srcPath);
             }
             else
             {
                 foreach (FileInfo file in toDelete)
                 {
                     if (actuallyDelete)
-                        Console.WriteLine("Deleting file {0}", file.FullName);
+                        reportWriter.WriteLine("Deleting file {0}", file.FullName);
                     else
-                        Console.WriteLine("Found file {0} to delete (not found in {1})", file.FullName, srcPath);
+                        reportWriter.WriteLine("Found file {0} to delete (not found in {1})", file.FullName, srcPath);
 
                 }
             }
@@ -371,17 +373,17 @@ namespace PhotoBackupCleanup
                 {
                     if (actuallyDelete)
                     {
-                        Console.WriteLine("Deleting directory {0}", dir.FullName);
+                        reportWriter.WriteLine("Deleting directory {0}", dir.FullName);
                         Directory.Delete(dir.FullName, true);
                     }
                     else
                     {
-                        Console.WriteLine("Found directory to delete {0}", dir.FullName);
+                        reportWriter.WriteLine("Found directory to delete {0}", dir.FullName);
                     }
                 }
                 else
                 {
-                    DeleteDestFiles(srcPath, destPath, dir, actuallyDelete);
+                    DeleteDestFiles(reportWriter, srcPath, destPath, dir, actuallyDelete);
                 }
             }
         }

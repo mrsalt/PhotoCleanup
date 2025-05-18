@@ -3,10 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Xml;
 
 namespace PhotoBackupCleanup
@@ -19,22 +16,23 @@ namespace PhotoBackupCleanup
         private static Collection<FileInfo> toProcess;
         private static Collection<FileData> fileData;
         private static int countHashed;
+        private static int threadsDone = 0;
 
-        public static Dictionary<string, FileData> GetFiles(List<DirectoryInfo> sourceDirectories, out Collection<FileData> duplicates)
+        public static Dictionary<string, FileData> GetFiles(TextWriter reportWriter, TextWriter progressWriter, List<DirectoryInfo> sourceDirectories, out Collection<FileData> duplicates)
         {
             fileData = new Collection<FileData>();
             foreach (DirectoryInfo sourceDirectory in sourceDirectories)
             {
-                Console.WriteLine("Searching for image files in {0}...", sourceDirectory.FullName);
+                progressWriter.WriteLine("Searching for image files in {0}...", sourceDirectory.FullName);
                 fileHashPath = Path.Combine(sourceDirectory.FullName, "FileHashes.xml");
                 ReadFileHashes();
                 Collection<FileInfo> fileList = new Collection<FileInfo>();
-                FindFiles(sourceDirectory, fileList);
-                CalculateImageHashes(fileList);
+                FindFiles(progressWriter, sourceDirectory, fileList, 0);
+                CalculateImageHashes(progressWriter, fileList);
                 WriteFileHashes();
             }
             duplicates = new Collection<FileData>();
-            return FindDuplicates(duplicates);
+            return FindDuplicates(reportWriter, duplicates);
         }
 
         private static void ReadFileHashes()
@@ -85,8 +83,14 @@ namespace PhotoBackupCleanup
             }
         }
 
-        private static void FindFiles(DirectoryInfo directory, Collection<FileInfo> files)// Dictionary<string, FileData> files, Collection<FileData> duplicates)
+        private static String padding(int spaces)
         {
+            return new String(' ', spaces);
+        }
+
+        private static void FindFiles(TextWriter progressWriter, DirectoryInfo directory, Collection<FileInfo> files, int depth)// Dictionary<string, FileData> files, Collection<FileData> duplicates)
+        {
+            progressWriter.WriteLine("{0}{1}", padding((depth + 1) * 2), directory);
             try
             {
                 foreach (FileInfo file in directory.EnumerateFiles())
@@ -99,7 +103,7 @@ namespace PhotoBackupCleanup
                 {
                     if (dir.Name == ".tmp.drivedownload")
                         continue;
-                    FindFiles(dir, files);
+                    FindFiles(progressWriter, dir, files, depth + 1);
                 }
             }
             catch (UnauthorizedAccessException uae)
@@ -110,52 +114,57 @@ namespace PhotoBackupCleanup
 
         private static void CalculateImageHash()
         {
-            while (true)
+            try
             {
-                FileInfo file;
-                lock (toProcess)
+                while (true)
                 {
-                    if (toProcess.Count == 0)
-                        break;
-                    file = toProcess[0];
-                    toProcess.RemoveAt(0);
-                }
-
-                FileData f = new FileData(file);
-                
-                bool found = false;
-                lock (fileHashes)
-                {
-                    if (fileHashes.ContainsKey(file.FullName) && fileHashes[file.FullName].lastModificationTime == file.LastWriteTimeUtc)
+                    FileInfo file;
+                    lock (toProcess)
                     {
-                        found = true;
-                        f.UpdateFromDataHash(fileHashes[file.FullName]);
+                        if (toProcess.Count == 0)
+                            break;
+                        file = toProcess[0];
+                        toProcess.RemoveAt(0);
                     }
-                }
 
-                if (!found && Utilities.IsImageFile(file))
-                {
-                    f.CalculateImageHash();
-                    countHashed++;
-                    DataHash d = new DataHash();
-                    d.hash = f.md5Hash;
-                    d.lastModificationTime = file.LastWriteTimeUtc;
+                    FileData f = new FileData(file);
 
+                    bool found = false;
                     lock (fileHashes)
                     {
-                        if (fileHashes.ContainsKey(file.FullName))
-                            fileHashes[file.FullName] = d;
-                        else
-                            fileHashes.Add(file.FullName, d);
+                        if (fileHashes.ContainsKey(file.FullName) && fileHashes[file.FullName].lastModificationTime == file.LastWriteTimeUtc)
+                        {
+                            found = true;
+                            f.UpdateFromDataHash(fileHashes[file.FullName]);
+                        }
+                    }
+
+                    if (!found && Utilities.IsImageFile(file))
+                    {
+                        f.CalculateImageHash();
+                        Interlocked.Increment(ref countHashed);
+                        DataHash d = new DataHash();
+                        d.hash = f.md5Hash;
+                        d.lastModificationTime = file.LastWriteTimeUtc;
+
+                        lock (fileHashes)
+                        {
+                            if (fileHashes.ContainsKey(file.FullName))
+                                fileHashes[file.FullName] = d;
+                            else
+                                fileHashes.Add(file.FullName, d);
+                        }
+                    }
+
+                    lock (fileData)
+                    {
+                        fileData.Add(f);
                     }
                 }
-
-                lock (fileData)
-                {
-                    fileData.Add(f);
-                    //if (!Utilities.htmlOutput)
-                    //    Console.Write("{0} files hashed.  {1:p1} complete.\r", processed, (double)processed / (double)sTotalFilesToProcess);
-                }
+            }
+            finally
+            {
+                Interlocked.Increment(ref threadsDone);
             }
         }
 
@@ -175,7 +184,7 @@ namespace PhotoBackupCleanup
             Environment.Exit(-1);
         }
 
-        private static void CalculateImageHashes(Collection<FileInfo> files)
+        private static void CalculateImageHashes(TextWriter progressWriter, Collection<FileInfo> files)
         {
             AppDomain currentDomain = AppDomain.CurrentDomain;
             currentDomain.UnhandledException += new UnhandledExceptionEventHandler(OnUnhandledException);
@@ -184,6 +193,7 @@ namespace PhotoBackupCleanup
             watch.Start();
             countHashed = 0;
             toProcess = files;
+            int totalToHash = files.Count;
 
             threadpool = new Thread[4];
             for (int i = 0; i < threadpool.Length; i++)
@@ -191,25 +201,27 @@ namespace PhotoBackupCleanup
                 threadpool[i] = new Thread(CalculateImageHash);
                 threadpool[i].Start();
             }
+
             // wait for all workers to finish:
-            for (int i = 0; i < threadpool.Length; i++)
+            while (threadsDone < threadpool.Length)
             {
-                threadpool[i].Join();
+                Thread.Sleep(1000);
+                progressWriter.Write("{0} files hashed.  {1:p1} complete.   \r", countHashed, (double)countHashed / (double)totalToHash);
             }
 
             watch.Stop();
             currentDomain.UnhandledException -= new UnhandledExceptionEventHandler(OnUnhandledException);
-            Console.WriteLine("{0} files hashed in {1}", countHashed, watch.Elapsed);
+            progressWriter.WriteLine("{0} files hashed in {1}", countHashed, watch.Elapsed);
         }
 
-        private static Dictionary<string, FileData> FindDuplicates(Collection<FileData> duplicates)
+        private static Dictionary<string, FileData> FindDuplicates(TextWriter reportWriter, Collection<FileData> duplicates)
         {
             Dictionary<string, FileData> result = new Dictionary<string, FileData>();
             foreach (FileData file in fileData)
             {
                 if (file.corruptImage)
                 {
-                    Console.WriteLine("{0} is corrupt.", Utilities.FormatFileName(file.fileInfo.FullName));
+                    reportWriter.WriteLine("{0} is corrupt.", Utilities.FormatFileName(file.fileInfo.FullName));
                     continue;
                 }
                 if (result.ContainsKey(file.key))
