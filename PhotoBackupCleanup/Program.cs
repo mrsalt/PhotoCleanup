@@ -14,12 +14,19 @@ namespace PhotoBackupCleanup
             Console.WriteLine("  Reports on duplicate image files, deletes duplicates, copies missing files.");
             Console.WriteLine("  Synchronizes two sets of files.");
             Console.WriteLine();
-            Console.WriteLine("  Arguments:");
-            Console.WriteLine("  -s   Specify a source directory.  Searches this directory and all subfolders");
-            Console.WriteLine("       for image files.");
-            Console.WriteLine("  -d   Specify the destination directory.  If only source directories are");
-            Console.WriteLine("       specified, program will only search for (and optinally delete) duplicate");
-            Console.WriteLine("       files.");
+            Console.WriteLine("  Required Arguments:");
+            Console.WriteLine("  -s              Specify a source directory.  Searches this directory and all subfolders");
+            Console.WriteLine("                  for image files.");
+            Console.WriteLine("  Optional Arguments:");
+            Console.WriteLine("  -d              Specify the destination directory.  If only source directories are");
+            Console.WriteLine("                  specified, program will only search for (and optionally delete)");
+            Console.WriteLine("                  duplicate files.");
+            Console.WriteLine("  -delete         deletes duplicates in src, as along as dest is not specified.");
+            Console.WriteLine("                  if dest is specified, deletes files in dest not found in src.");
+            Console.WriteLine("                  before using this option, it is wise to run -reportMissing.");
+            Console.WriteLine("  -copy           copies files found in src not found in dest.");
+            Console.WriteLine("  -reportMissing  reports files found in dest not found in src.");
+            Console.WriteLine("  -html           Output the report in html format.");
         }
 
         static SortedSet<String> filesToIgnore = new SortedSet<string>();
@@ -42,7 +49,7 @@ namespace PhotoBackupCleanup
                     case "-s":
                     {
                         // specify source directories only to find duplicates.
-                        // program will search each source directory (and it's subfolders) for
+                        // program will search each source directory (and its subfolders) for
                         // all image files.
                         sourceDirectories.Add(new DirectoryInfo(args[++i]));
                         break;
