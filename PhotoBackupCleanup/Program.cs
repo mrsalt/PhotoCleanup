@@ -110,12 +110,10 @@ namespace PhotoBackupCleanup
             if (destDirectory == null)
             {
                 reportWriter.WriteLine("{0:N0} duplicates found in {1}: ({2} files on left)", sourceDuplicates.Count, String.Join(", ", sourceDirectories), deleteFiles ? "deleting" : "will delete");
+                long deletedBytes = 0;
+                int deletedCount = 0;
                 foreach (FileData dup in sourceDuplicates)
                 {
-                    //if (!string.IsNullOrEmpty(dup.md5Hash) && !string.IsNullOrEmpty(sourceFiles[dup.key].md5Hash) &&
-                    //    dup.md5Hash != sourceFiles[dup.key].md5Hash)
-                    //if (dup.fileInfo.Length != sourceFiles[dup.key].fileInfo.Length)
-                    //    throw new Exception(String.Format("{0} is not a duplicate of {1}", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName)));
                     if (deleteFiles)
                     {
                         if (!Utilities.IsMediaFile(dup.fileInfo))
@@ -126,12 +124,18 @@ namespace PhotoBackupCleanup
                         {
                             reportWriter.WriteLine("Deleting {0} (duplicate of {1})", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName));
                             File.Delete(dup.fileInfo.FullName);
+                            deletedBytes += dup.fileInfo.Length;
+                            deletedCount++;
                         }
                     }
                     else
                     {
                         reportWriter.WriteLine("{0} (duplicate of {1}){2}", Utilities.FormatFileName(dup.fileInfo.FullName), Utilities.FormatFileName(sourceFiles[dup.key].fileInfo.FullName), Utilities.IsMediaFile(dup.fileInfo) ? "" : " (not an image file)");
                     }
+                }
+                if (deletedBytes > 0)
+                {
+                    reportWriter.WriteLine("Deleted {0} files, {1}{2}", deletedCount, Utilities.ByteSuffix(deletedBytes));
                 }
             }
             else if (sourceFiles.Count > 0)
@@ -194,7 +198,7 @@ namespace PhotoBackupCleanup
                     }
                     else
                     {
-                        reportWriter.WriteLine("Found file to copy: {0} to {1}", srcInfo.FullName, destPath);
+                        reportWriter.WriteLine("Found file to copy: {0} to {1}", Utilities.FormatFileName(srcInfo.FullName), destPath);
                     }
                 }
             }
@@ -363,7 +367,7 @@ namespace PhotoBackupCleanup
                     if (actuallyDelete)
                         reportWriter.WriteLine("Deleting file {0}", file.FullName);
                     else
-                        reportWriter.WriteLine("Found file {0} to delete (not found in {1})", file.FullName, srcPath);
+                        reportWriter.WriteLine("Found file {0} to delete (not found in {1})", Utilities.FormatFileName(file.FullName), srcPath);
 
                 }
             }

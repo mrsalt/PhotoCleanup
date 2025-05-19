@@ -5,15 +5,18 @@ namespace PhotoBackupCleanup
 {
     internal class FileData
     {
-        public FileData(FileInfo info)
+        public FileData(FileInfo info, bool isProtected)
         {
             fileInfo = info;
             key = info.Name + ":" + info.Length;
+            this.isProtected = isProtected;
         }
+
         public FileInfo fileInfo;
         public string key;
         public string md5Hash;
         public bool corruptImage;
+        public bool isProtected;
 
         internal void CalculateImageHash()
         {
@@ -42,7 +45,6 @@ namespace PhotoBackupCleanup
             {
                 corruptImage = true;
             }
-
         }
     }
 

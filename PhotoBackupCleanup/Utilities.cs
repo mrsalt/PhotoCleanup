@@ -113,5 +113,23 @@ namespace PhotoBackupCleanup
                 .Uri
                 .AbsoluteUri;
         }
+
+        // Thank you JLRishe, https://stackoverflow.com/questions/14488796/does-net-provide-an-easy-way-convert-bytes-to-kb-mb-gb-etc
+        static readonly string[] SizeSuffixes =
+                  { "bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
+        public static string ByteSuffix(long value, int decimalPlaces = 1)
+        {
+            if (value < 0) { return "-" + ByteSuffix(-value, decimalPlaces); }
+
+            int i = 0;
+            decimal dValue = (decimal)value;
+            while (Math.Round(dValue, decimalPlaces) >= 1000)
+            {
+                dValue /= 1024;
+                i++;
+            }
+
+            return string.Format("{0:n" + decimalPlaces + "} {1}", dValue, SizeSuffixes[i]);
+        }
     }
 }
