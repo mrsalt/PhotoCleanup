@@ -99,21 +99,23 @@ namespace PhotoBackupCleanup
                 {
                     if (file.Extension.Equals(".db"))
                         continue;
-                    if (file.Name == "ignore duplicates")
+                    if (file.Name == ".ignore duplicates")
                     {
                         protectedFiles = true;
-                        progressWriter.WriteLine("Found \"ignore duplicates\".  Will not delete duplicate files in {0}", directory.FullName);
+                        progressWriter.WriteLine("Found \".ignore duplicates\".  Will not delete duplicate files in {0}", directory.FullName);
                     }
                     else
                     {
                         fileInfos.Add(file);
                     }
                 }
+                long size = 0;
                 foreach (FileInfo file in fileInfos)
                 {
                     files.Add(new FileData(file, protectedFiles));
+                    size += file.Length;
                 }
-                progressWriter.WriteLine("{0}{1} ({2:N0} files)", padding((depth + 1) * 2), directory, fileInfos.Count);
+                progressWriter.WriteLine("{0}{1} ({2:N0} files, {3})", padding((depth + 1) * 2), directory, fileInfos.Count, Utilities.ByteSuffix(size));
                 foreach (DirectoryInfo dir in directory.EnumerateDirectories())
                 {
                     if (dir.Name == ".tmp.drivedownload")

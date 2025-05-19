@@ -25,6 +25,8 @@ namespace PhotoBackupCleanup
             Console.WriteLine("  -delete         deletes duplicates in src, as along as dest is not specified.");
             Console.WriteLine("                  if dest is specified, deletes files in dest not found in src.");
             Console.WriteLine("                  before using this option, it is wise to run -reportMissing.");
+            Console.WriteLine("                  If duplicates are reported that you do not want deleted, place a");
+            Console.WriteLine("                  \".ignore duplicates\" file in the directory you wish to protect.");
             Console.WriteLine("  -copy           copies files found in src not found in dest.");
             Console.WriteLine("  -reportMissing  reports files found in dest not found in src.");
             Console.WriteLine("  -html           Output the report in html format.");

@@ -129,6 +129,7 @@ namespace PhotoBackupCleanup
                 i++;
             }
 
+            if (i == 0) decimalPlaces = 0;
             return string.Format("{0:n" + decimalPlaces + "} {1}", dValue, SizeSuffixes[i]);
         }
     }
