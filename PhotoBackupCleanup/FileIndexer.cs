@@ -11,6 +11,7 @@ namespace PhotoBackupCleanup
     class FileIndexer
     {
         private static String fileHashesFileName = "FileHashes.xml";
+        private Dictionary<string, DataHash> fileHashesRead;
         private Dictionary<string, DataHash> fileHashes;
         private string fileHashPath;
         private Thread[] threadpool;
@@ -34,7 +35,7 @@ namespace PhotoBackupCleanup
             progressWriter.WriteLine("Searching for image files in {0}...", sourceDirectory.FullName);
             fileHashPath = Path.Combine(sourceDirectory.FullName, fileHashesFileName);
             ReadFileHashes();
-            progressWriter.WriteLine("Found {0:N0} files in FileHashes.xml", fileHashes.Count);
+            progressWriter.WriteLine("Found {0:N0} files in FileHashes.xml", fileHashesRead.Count);
             Collection<FileData> fileList = new Collection<FileData>();
             FindFiles(sourceDirectory, fileList, false, 0);
             CalculateImageHashes(fileList);
@@ -44,7 +45,7 @@ namespace PhotoBackupCleanup
 
         private void ReadFileHashes()
         {
-            fileHashes = new Dictionary<string, DataHash>(StringComparer.OrdinalIgnoreCase);
+            fileHashesRead = new Dictionary<string, DataHash>(StringComparer.OrdinalIgnoreCase);
             if (!File.Exists(fileHashPath))
                 return;
             using (XmlReader reader = XmlReader.Create(fileHashPath))
@@ -59,7 +60,7 @@ namespace PhotoBackupCleanup
                             d.hash = reader.GetAttribute("hash");
                             d.lastModificationTime = DateTime.Parse(reader.GetAttribute("date"), null, System.Globalization.DateTimeStyles.RoundtripKind);
                             reader.GetAttribute("path");
-                            fileHashes.Add(reader.GetAttribute("path"), d);
+                            fileHashesRead.Add(reader.GetAttribute("path"), d);
                         }
                     }
                 }
@@ -68,7 +69,7 @@ namespace PhotoBackupCleanup
 
         private void WriteFileHashes()
         {
-            if (countHashed == 0)
+            if (countHashed == 0 && fileHashes.Count == fileHashesRead.Count)
                 return;
             XmlWriterSettings settings = new XmlWriterSettings();
             settings.Indent = true;
@@ -152,12 +153,17 @@ namespace PhotoBackupCleanup
                     }
 
                     bool found = false;
-                    lock (fileHashes)
+                    lock (fileHashesRead)
                     {
-                        if (fileHashes.ContainsKey(file.fileInfo.FullName) && fileHashes[file.fileInfo.FullName].lastModificationTime == file.fileInfo.LastWriteTimeUtc)
+                        DataHash dataHash;
+                        if (fileHashesRead.TryGetValue(file.fileInfo.FullName, out dataHash) && dataHash.lastModificationTime == file.fileInfo.LastWriteTimeUtc)
                         {
                             found = true;
-                            file.UpdateFromDataHash(fileHashes[file.fileInfo.FullName]);
+                            file.UpdateFromDataHash(dataHash);
+                            lock (fileHashes)
+                            {
+                                fileHashes.Add(file.fileInfo.FullName, dataHash);
+                            }
                         }
                     }
 
@@ -165,16 +171,13 @@ namespace PhotoBackupCleanup
                     {
                         file.CalculateImageHash();
                         Interlocked.Increment(ref countHashed);
-                        DataHash d = new DataHash();
-                        d.hash = file.md5Hash;
-                        d.lastModificationTime = file.fileInfo.LastWriteTimeUtc;
+                        DataHash dataHash = new DataHash();
+                        dataHash.hash = file.md5Hash;
+                        dataHash.lastModificationTime = file.fileInfo.LastWriteTimeUtc;
 
                         lock (fileHashes)
                         {
-                            if (fileHashes.ContainsKey(file.fileInfo.FullName))
-                                fileHashes[file.fileInfo.FullName] = d;
-                            else
-                                fileHashes.Add(file.fileInfo.FullName, d);
+                            fileHashes.Add(file.fileInfo.FullName, dataHash);
                         }
                     }
 
@@ -209,6 +212,7 @@ namespace PhotoBackupCleanup
 
         private void CalculateImageHashes(Collection<FileData> files)
         {
+            fileHashes = new Dictionary<string, DataHash>(StringComparer.OrdinalIgnoreCase);
             AppDomain currentDomain = AppDomain.CurrentDomain;
             currentDomain.UnhandledException += new UnhandledExceptionEventHandler(OnUnhandledException);
 
@@ -239,6 +243,7 @@ namespace PhotoBackupCleanup
             currentDomain.UnhandledException -= new UnhandledExceptionEventHandler(OnUnhandledException);
             progressWriter.WriteLine("{0:N0} files processed in {1}", countProcessed, watch.Elapsed);
         }
+
         public void FindDuplicates(Collection<FileData> fileData, Dictionary<string, FileData> result, Collection<FileData> duplicates)
         {
             foreach (FileData file in fileData)
