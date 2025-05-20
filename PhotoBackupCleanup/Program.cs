@@ -52,44 +52,44 @@ namespace PhotoBackupCleanup
                 switch (args[i])
                 {
                     case "-s":
-                    {
-                        // specify source directories only to find duplicates.
-                        // program will search each source directory (and its subfolders) for
-                        // all image files.
-                        sourceDirectories.Add(new DirectoryInfo(args[++i]));
-                        break;
-                    }
+                        {
+                            // specify source directories only to find duplicates.
+                            // program will search each source directory (and its subfolders) for
+                            // all image files.
+                            sourceDirectories.Add(new DirectoryInfo(args[++i]));
+                            break;
+                        }
                     case "-d":
-                    {
-                        destDirectory = new DirectoryInfo(args[++i]);
-                        break;
-                    }
+                        {
+                            destDirectory = new DirectoryInfo(args[++i]);
+                            break;
+                        }
                     case "-delete":
-                    {
-                        // deletes duplicates in src, as along as dest is not specified.
-                        
-                        // if dest is specified, deletes files in dest not found in src.
-                        // before using this option, it is wise to run -reportMissing.
-                        deleteFiles = true;
-                        break;
-                    }
+                        {
+                            // deletes duplicates in src, as along as dest is not specified.
+
+                            // if dest is specified, deletes files in dest not found in src.
+                            // before using this option, it is wise to run -reportMissing.
+                            deleteFiles = true;
+                            break;
+                        }
                     case "-copy":
-                    {
-                        // copies files found in src not found in dest
-                        copyMissingFiles = true;
-                        break;
-                    }
+                        {
+                            // copies files found in src not found in dest
+                            copyMissingFiles = true;
+                            break;
+                        }
                     case "-reportMissing":
-                    {
-                        // reports files found in dest not found in src.
-                        reportMissingFiles = true;
-                        break;
-                    }
+                        {
+                            // reports files found in dest not found in src.
+                            reportMissingFiles = true;
+                            break;
+                        }
                     case "-html":
-                    {
-                        Utilities.htmlOutput = true;
-                        break;
-                    }
+                        {
+                            Utilities.htmlOutput = true;
+                            break;
+                        }
                 }
             }
 
@@ -100,14 +100,11 @@ namespace PhotoBackupCleanup
                 return;
             }
 
-            Collection<FileData> sourceDuplicates;
-
             if (Utilities.htmlOutput)
                 reportWriter.WriteLine("<pre>");
 
-            Dictionary<string, FileData> sourceFiles = FileIndexer.GetFiles(reportWriter, progressWriter, sourceDirectories, out sourceDuplicates);
-            if (sourceFiles == null)
-                return;
+            Collection<FileData> sourceDuplicates;
+            Dictionary<string, FileData> sourceFiles = ProcessDirectories(sourceDirectories, reportWriter, progressWriter, out sourceDuplicates);
 
             if (destDirectory == null)
             {
@@ -145,9 +142,8 @@ namespace PhotoBackupCleanup
                 if (sourceDirectories.Count == 1)
                 {
                     Collection<FileData> destDuplicates;
-                    List<DirectoryInfo> destDirectoriesList = new List<DirectoryInfo>();
-                    destDirectoriesList.Add(destDirectory);
-                    Dictionary<string, FileData> destFiles = FileIndexer.GetFiles(reportWriter, progressWriter, destDirectoriesList, out destDuplicates);
+                    List<DirectoryInfo> destDirectoriesList = new List<DirectoryInfo>{ destDirectory };
+                    Dictionary<string, FileData> destFiles = ProcessDirectories(destDirectoriesList, reportWriter, progressWriter, out destDuplicates);
 
                     if (reportMissingFiles)
                     {
@@ -169,6 +165,19 @@ namespace PhotoBackupCleanup
 
             if (Utilities.htmlOutput)
                 reportWriter.WriteLine("</pre>");
+        }
+
+        private static Dictionary<string, FileData> ProcessDirectories(List<DirectoryInfo> directories, TextWriter reportWriter, TextWriter progressWriter, out Collection<FileData> duplicates)
+        {
+            FileIndexer indexer = new FileIndexer(reportWriter, progressWriter);
+            Dictionary<string, FileData> filesByKey = new Dictionary<string, FileData>();
+            duplicates = new Collection<FileData>();
+            foreach (DirectoryInfo directory in directories)
+            {
+                Collection<FileData> files = indexer.GetFiles(directory);
+                indexer.FindDuplicates(files, filesByKey, duplicates);
+            }
+            return filesByKey;
         }
 
         private static void CopyMissingFiles(TextWriter reportWriter, DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, bool actuallyCopy)
