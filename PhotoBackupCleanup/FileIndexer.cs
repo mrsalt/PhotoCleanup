@@ -250,16 +250,16 @@ namespace PhotoBackupCleanup
             {
                 if (file.corruptImage)
                 {
-                    reportWriter.WriteLine("{0} is corrupt.", Utilities.FormatFileName(file.fileInfo.FullName));
+                    reportWriter.WriteLine("{0} ({1}) is corrupt.", Utilities.FormatFileName(file.fileInfo.FullName), Utilities.ByteSuffix(file.fileInfo.Length));
                     continue;
                 }
-                if (file.isProtected)
+                FileData existing;
+                if (result.TryGetValue(file.key, out existing))
                 {
-                    continue;
-                }
-                if (result.ContainsKey(file.key))
-                {
-                    duplicates.Add(file);
+                    if (!file.isProtected && !existing.isProtected)
+                    {
+                        duplicates.Add(file);
+                    }
                 }
                 else
                 {

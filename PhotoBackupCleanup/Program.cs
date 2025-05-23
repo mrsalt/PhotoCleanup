@@ -134,7 +134,7 @@ namespace PhotoBackupCleanup
                 }
                 if (deletedBytes > 0)
                 {
-                    reportWriter.WriteLine("Deleted {0} files, {1}{2}", deletedCount, Utilities.ByteSuffix(deletedBytes));
+                    reportWriter.WriteLine("Deleted {0:N0} files, {1}", deletedCount, Utilities.ByteSuffix(deletedBytes));
                 }
             }
             else if (sourceFiles.Count > 0)
@@ -147,14 +147,18 @@ namespace PhotoBackupCleanup
 
                     if (reportMissingFiles)
                     {
-                        ReportOnMissingSourceFiles(reportWriter, sourceDirectories[0], destDirectory, sourceFiles, destFiles, destDuplicates);
+                        ReportOnMissingSourceFiles(reportWriter, progressWriter, sourceDirectories[0], destDirectory, sourceFiles, destFiles, destDuplicates);
                     }
                     else
                     {
                         reportWriter.WriteLine();
-                        CopyMissingFiles(reportWriter, sourceDirectories[0], destDirectory, sourceFiles, copyMissingFiles);
+                        int filesToCopy;
+                        long bytesToCopy = CopyMissingFiles(reportWriter, sourceDirectories[0], destDirectory, sourceFiles, copyMissingFiles, out filesToCopy);
+                        reportWriter.WriteLine("{0:N0} files to copy, {1}", filesToCopy, Utilities.ByteSuffix(bytesToCopy));
                         reportWriter.WriteLine();
-                        DeleteDestFiles(reportWriter, sourceDirectories[0].FullName, destDirectory.FullName, destDirectory, deleteFiles);
+                        int filesToDelete = 0;
+                        long bytesToDelete = DeleteDestFiles(reportWriter, sourceDirectories[0].FullName, destDirectory.FullName, destDirectory, false, deleteFiles, ref filesToDelete);
+                        reportWriter.WriteLine("{0:N0} files to delete, {1}", filesToDelete, Utilities.ByteSuffix(bytesToDelete));
                     }
                 }
                 else
@@ -180,8 +184,10 @@ namespace PhotoBackupCleanup
             return filesByKey;
         }
 
-        private static void CopyMissingFiles(TextWriter reportWriter, DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, bool actuallyCopy)
+        private static long CopyMissingFiles(TextWriter reportWriter, DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, bool actuallyCopy, out int filesToCopy)
         {
+            long bytesToCopy = 0;
+            filesToCopy = 0;
             foreach (KeyValuePair<string, FileData> pair in sourceFiles)
             {
                 FileInfo srcInfo = pair.Value.fileInfo;
@@ -197,9 +203,11 @@ namespace PhotoBackupCleanup
                     {
                         reportWriter.WriteLine("Warning - nonstandard file extension:");
                     }
+                    bytesToCopy += srcInfo.Length;
+                    filesToCopy++;
                     if (actuallyCopy)
                     {
-                        reportWriter.WriteLine("Copying {0} to {1}", srcInfo.FullName, destPath);
+                        reportWriter.WriteLine("Copying {0} ({1}) to {2}", srcInfo.FullName, Utilities.ByteSuffix(srcInfo.Length), destPath);
                         DirectoryInfo destDir = new DirectoryInfo(new FileInfo(destPath).DirectoryName);
                         if (!destDir.Exists)
                         {
@@ -209,15 +217,16 @@ namespace PhotoBackupCleanup
                     }
                     else
                     {
-                        reportWriter.WriteLine("Found file to copy: {0} to {1}", Utilities.FormatFileName(srcInfo.FullName), destPath);
+                        reportWriter.WriteLine("Found file to copy: {0} ({1}) to {2}", Utilities.FormatFileName(srcInfo.FullName), Utilities.ByteSuffix(srcInfo.Length), destPath);
                     }
                 }
             }
+            return bytesToCopy;
         }
 
-        private static void ReportOnMissingSourceFiles(TextWriter reportWriter, DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, Dictionary<string, FileData> destFiles, Collection<FileData> destDuplicates)
+        private static void ReportOnMissingSourceFiles(TextWriter reportWriter, TextWriter progressWriter, DirectoryInfo sourceDirectory, DirectoryInfo destDirectory, Dictionary<string, FileData> sourceFiles, Dictionary<string, FileData> destFiles, Collection<FileData> destDuplicates)
         {
-            reportWriter.WriteLine("{0} contains {1} duplicates.", destDirectory.FullName, destDuplicates.Count);
+            reportWriter.WriteLine("{0} contains {1:N0} duplicates.", destDirectory.FullName, destDuplicates.Count);
 
             Dictionary<long, Collection<FileData>> sourceFilesBySize;
             Dictionary<string, Collection<FileData>> sourceFilesByName;
@@ -233,7 +242,7 @@ namespace PhotoBackupCleanup
                 {
                     MatchType matchType = MatchType.Undefined;
                     double fileSizeDiffPercent = 0;
-                    FileData match = MatchingFileFound(pair.Value, sourceFilesBySize, sourceFilesByName, ref matchType, ref fileSizeDiffPercent);
+                    FileData match = MatchingFileFound(progressWriter, pair.Value, sourceFilesBySize, sourceFilesByName, ref matchType, ref fileSizeDiffPercent);
                     if (match != null && (matchType == MatchType.SizeAndBytes || fileSizeDiffPercent < 0.03))
                     {
                         if (matchType != MatchType.SizeAndBytes)
@@ -244,16 +253,16 @@ namespace PhotoBackupCleanup
                     }
                     missing.Add(pair.Value);
                     if (matchType == MatchType.Name)
-                        reportWriter.WriteLine("{0} not found under {1} ({2} file size diff: {3:p})", Utilities.FormatFileName(pair.Value.fileInfo.FullName), sourceDirectory.FullName, Utilities.FormatFileName(match.fileInfo.FullName), fileSizeDiffPercent);
+                        reportWriter.WriteLine("{0} ({1}) not found under {2} ({3}, {4}, file size diff: {5:p})", Utilities.FormatFileName(pair.Value.fileInfo.FullName), Utilities.ByteSuffix(pair.Value.fileInfo.Length), sourceDirectory.FullName, Utilities.FormatFileName(match.fileInfo.FullName), Utilities.ByteSuffix(match.fileInfo.Length), fileSizeDiffPercent);
                     else
-                        reportWriter.WriteLine("{0} not found under {1}", Utilities.FormatFileName(pair.Value.fileInfo.FullName), sourceDirectory.FullName);
+                        reportWriter.WriteLine("{0} ({1}) not found under {2}", Utilities.FormatFileName(pair.Value.fileInfo.FullName), Utilities.ByteSuffix(pair.Value.fileInfo.Length), sourceDirectory.FullName);
                     sourceMissing++;
                 }
             }
-            reportWriter.WriteLine("{0} files found under {1} not found under {2}.", sourceMissing, destDirectory.FullName, sourceDirectory.FullName);
+            reportWriter.WriteLine("{0:N0} files found under {1} not found under {2}.", sourceMissing, destDirectory.FullName, sourceDirectory.FullName);
             reportWriter.WriteLine();
 
-            reportWriter.WriteLine("{0} files match a file of a different name (or same name but different size):", matches.Count);
+            reportWriter.WriteLine("{0:N0} files match a file of a different name (or same name but different size):", matches.Count);
             foreach (string match in matches)
             {
                 reportWriter.WriteLine(match);
@@ -268,7 +277,7 @@ namespace PhotoBackupCleanup
             Name
         };
 
-        private static FileData MatchingFileFound(FileData fileData, Dictionary<long, Collection<FileData>> sourceFilesBySize, Dictionary<string, Collection<FileData>> sourceFilesByName, ref MatchType matchType, ref double matchSimilarity)
+        private static FileData MatchingFileFound(TextWriter progressWriter, FileData fileData, Dictionary<long, Collection<FileData>> sourceFilesBySize, Dictionary<string, Collection<FileData>> sourceFilesByName, ref MatchType matchType, ref double fileSizeDiffPercent)
         {
             if (sourceFilesBySize.ContainsKey(fileData.fileInfo.Length))
             {
@@ -276,7 +285,7 @@ namespace PhotoBackupCleanup
                 byte[] abytes = File.ReadAllBytes(fileData.fileInfo.FullName);
                 foreach (FileData file in sameSizedFiles)
                 {
-                    if (FileContentsMatch(abytes, file))
+                    if (FileContentsMatch(abytes, file, progressWriter))
                     {
                         matchType = MatchType.SizeAndBytes;
                         return file;
@@ -290,7 +299,7 @@ namespace PhotoBackupCleanup
                 FileData bestMatch = null;
                 foreach (FileData file in sameNamedFiles)
                 {
-                    double percentDifferent = (double)Math.Abs(fileData.fileInfo.Length - file.fileInfo.Length) / (double)fileData.fileInfo.Length;
+                    double percentDifferent = (double)Math.Abs(fileData.fileInfo.Length - file.fileInfo.Length) / (double)Math.Max(fileData.fileInfo.Length, file.fileInfo.Length);
                     if (percentDifferent < bestDiff)
                     {
                         bestMatch = file;
@@ -299,7 +308,7 @@ namespace PhotoBackupCleanup
                 }
                 if (bestMatch != null)
                 {
-                    matchSimilarity = bestDiff;
+                    fileSizeDiffPercent = bestDiff;
                     matchType = bestDiff < 0.01 ? MatchType.NameAndSimilarSize : MatchType.Name;
                     return bestMatch;
                 }
@@ -317,10 +326,18 @@ namespace PhotoBackupCleanup
             return b1.Length == b2.Length && memcmp(b1, b2, b1.Length) == 0;
         }
 
-        private static bool FileContentsMatch(byte[] abytes, FileData b)
+        private static bool FileContentsMatch(byte[] abytes, FileData b, TextWriter progressWriter)
         {
-            byte[] bbytes = File.ReadAllBytes(b.fileInfo.FullName);
-            return ByteArrayCompare(abytes, bbytes);
+            try
+            {
+                byte[] bbytes = File.ReadAllBytes(b.fileInfo.FullName);
+                return ByteArrayCompare(abytes, bbytes);
+            }
+            catch (IOException e)
+            {
+                progressWriter.WriteLine(e);
+                return false;
+            }
         }
 
         private static void BuildSizeBasedDictionary(Dictionary<string, FileData> files, out Dictionary<long, Collection<FileData>> dictionary)
@@ -329,6 +346,7 @@ namespace PhotoBackupCleanup
             foreach (KeyValuePair<string, FileData> pair in files)
             {
                 long size = pair.Value.fileInfo.Length;
+                if (size == 0) continue;
                 if (!dictionary.ContainsKey(size))
                 {
                     dictionary.Add(size, new Collection<FileData>());
@@ -351,34 +369,38 @@ namespace PhotoBackupCleanup
             }
         }
 
-        private static void DeleteDestFiles(TextWriter reportWriter, string srcPath, string destPath, DirectoryInfo directory, bool actuallyDelete)
+        private static long DeleteDestFiles(TextWriter reportWriter, string srcPath, string destPath, DirectoryInfo directory, bool shortenReport, bool actuallyDelete, ref int filesToDelete)
         {
+            long bytesToDelete = 0;
+
             Collection<FileInfo> toDelete = new Collection<FileInfo>();
             foreach (FileInfo file in directory.EnumerateFiles())
             {
                 string fullSrcPath = file.FullName.Replace(destPath, srcPath);
                 if (!File.Exists(fullSrcPath))
                 {
+                    bytesToDelete += file.Length;
+                    filesToDelete++;
                     toDelete.Add(file);
                     if (actuallyDelete)
                         File.Delete(file.FullName);
                 }
             }
-            if (toDelete.Count > 5)
+            if (toDelete.Count > 5 && shortenReport)
             {
                 if (actuallyDelete)
-                    reportWriter.WriteLine("Deleting {0} files in {1}", toDelete.Count, directory.FullName);
+                    reportWriter.WriteLine("Deleting {0:N0} files in {1}", toDelete.Count, directory.FullName);
                 else
-                    reportWriter.WriteLine("Found {0} files in {1} to delete (not found in {2}).", toDelete.Count, directory.FullName, srcPath);
+                    reportWriter.WriteLine("Found {0:N0} files in {1} to delete (not found in {2}).", toDelete.Count, directory.FullName, srcPath);
             }
             else
             {
                 foreach (FileInfo file in toDelete)
                 {
                     if (actuallyDelete)
-                        reportWriter.WriteLine("Deleting file {0}", file.FullName);
+                        reportWriter.WriteLine("Deleting file {0} ({1})", file.FullName, Utilities.ByteSuffix(file.Length));
                     else
-                        reportWriter.WriteLine("Found file {0} to delete (not found in {1})", Utilities.FormatFileName(file.FullName), srcPath);
+                        reportWriter.WriteLine("Found file {0} ({1}) to delete (not found in {2})", Utilities.FormatFileName(file.FullName), Utilities.ByteSuffix(file.Length), srcPath);
 
                 }
             }
@@ -399,9 +421,10 @@ namespace PhotoBackupCleanup
                 }
                 else
                 {
-                    DeleteDestFiles(reportWriter, srcPath, destPath, dir, actuallyDelete);
+                    bytesToDelete += DeleteDestFiles(reportWriter, srcPath, destPath, dir, shortenReport, actuallyDelete, ref filesToDelete);
                 }
             }
+            return bytesToDelete;
         }
 
     }
